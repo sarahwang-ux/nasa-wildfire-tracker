@@ -170,6 +170,28 @@ if not df.empty:
         r_col4.metric("Wind Bearing", f"{direction}°")
         r_col5.metric("Algorithmic Risk Index", f"{raw_score} ({risk})")
 
+    # Time-Series Analytics Chart
+    st.markdown("---")
+    st.subheader("📈 Spatial-Temporal Disaster Trends")
+
+    if not filtered_df.empty:
+        trend_df = filtered_df.copy()
+        trend_df["Date Recorded"] = pd.to_datetime(trend_df["Date Recorded"])
+        daily_counts = trend_df.groupby("Date Recorded").size().reset_index(name="Incident Count")
+        
+        fig_trend = px.line(
+            daily_counts,
+            x="Date Recorded",
+            y="Incident Count",
+            title="Daily Detected Wildfire Frequency Over Time",
+            labels={"Incident Count": "Number of Active Fires Detected", "Date Recorded": "Date"},
+            markers=True
+        )
+        
+        fig_trend.update_traces(line_color="#FF4B4B")
+        fig_trend.update_layout(height=400, margin={"r":20,"t":40,"l":20,"b":20})
+        st.plotly_chart(fig_trend, use_container_width=True)
+
     # Data Export & Table Section
     st.markdown("---")
     st.subheader("📊 Export & Raw Data Telemetry")
