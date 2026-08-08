@@ -84,24 +84,37 @@ with st.spinner("Fetching NASA Satellite Feeds..."):
 
 # --- DASHBOARD LAYOUT ---
 if not df.empty:
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Live Wildfire Events Detected", len(df))
-    col2.metric("Primary Data Source", "NASA EONET v3 API")
-    col3.metric("Weather Telemetry", "Open-Meteo Synchronized ✅")
+    # Top Metrics Bar
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Live Events Detected", len(df))
+    col2.metric("Primary API", "NASA EONET v3")
+    col3.metric("Weather Telemetry", "Open-Meteo Sync ✅")
+    col4.metric("Platform Status", "Operational 🟢")
 
     st.markdown("---")
+
+    # Search & Filter Engine
+    st.subheader("🔍 Event Search & Filter Engine")
+    search_query = st.text_input("Filter events by keyword/region (e.g., 'California', 'Canada', 'Fire'):", "")
+    
+    if search_query:
+        filtered_df = df[df["Event Name"].str.contains(search_query, case=False, na=False)]
+    else:
+        filtered_df = df
+
+    st.write(f"Showing **{len(filtered_df)}** matching events.")
 
     # Interactive Map (OpenStreetMap Style)
     st.subheader("🔥 Interactive Global Wildfire Map")
     
     fig_map = px.scatter_map(
-        df,
+        filtered_df,
         lat="Latitude",
         lon="Longitude",
         hover_name="Event Name",
         hover_data={"Date Recorded": True, "Latitude": ":.2f", "Longitude": ":.2f"},
         color_discrete_sequence=["#FF4B4B"],
-        title="Active Coordinates Captured via NASA Satellite Network",
+        title="Coordinates Captured via NASA Satellite Network",
         zoom=1,
         map_style="open-street-map"
     )
@@ -115,21 +128,34 @@ if not df.empty:
     st.subheader("🔬 Atmospheric Threat Analysis")
     st.write("Select an active event to stream atmospheric conditions and calculate real-time spread risk:")
     
-    selected_event = st.selectbox("Select Wildfire Event", df["Event Name"].unique())
-    event_data = df[df["Event Name"] == selected_event].iloc[0]
+    selected_event = st.selectbox("Select Wildfire Event", filtered_df["Event Name"].unique())
     
-    # Fetch live weather for selected event
-    temp, humidity, wind, risk = fetch_weather_risk(event_data["Latitude"], event_data["Longitude"])
-    
-    r_col1, r_col2, r_col3, r_col4 = st.columns(4)
-    r_col1.metric("Local Temperature", f"{temp} °C")
-    r_col2.metric("Relative Humidity", f"{humidity} %")
-    r_col3.metric("Wind Speed (10m)", f"{wind} km/h")
-    r_col4.metric("Calculated Spread Risk", risk)
+    if selected_event:
+        event_data = filtered_df[filtered_df["Event Name"] == selected_event].iloc[0]
+        
+        # Fetch live weather for selected event
+        temp, humidity, wind, risk = fetch_weather_risk(event_data["Latitude"], event_data["Longitude"])
+        
+        r_col1, r_col2, r_col3, r_col4 = st.columns(4)
+        r_col1.metric("Local Temperature", f"{temp} °C")
+        r_col2.metric("Relative Humidity", f"{humidity} %")
+        r_col3.metric("Wind Speed (10m)", f"{wind} km/h")
+        r_col4.metric("Calculated Spread Risk", risk)
 
-    # Data Table View
-    with st.expander("📄 View Raw Telemetry Data Table"):
-        st.dataframe(df)
+    # Data Export & Table Section
+    st.markdown("---")
+    st.subheader("📊 Export & Raw Data Telemetry")
+    
+    csv_data = filtered_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download Intelligence Report (CSV)",
+        data=csv_data,
+        file_name="nasa_wildfire_intelligence_report.csv",
+        mime="text/csv",
+    )
+    
+    with st.expander("📄 View Full Data Table"):
+        st.dataframe(filtered_df)
 
 else:
     st.warning("No active wildfire events returned. Adjust the sidebar settings!")
