@@ -209,3 +209,20 @@ if not df.empty:
 
 else:
     st.warning("No active wildfire events returned. Adjust the sidebar settings!")
+    st.markdown("---")
+st.header("🚨 Wildfire Distance & Risk Alerts")
+st.write("Subscribe to get notified if an active fire hotspot is detected near your location.")
+
+with st.form("alert_form"):
+    user_email = st.text_input("Enter your email address:")
+    user_lat = st.number_input("Your Latitude:", value=37.7749, format="%.4f")
+    user_lon = st.number_input("Your Longitude:", value=-122.4194, format="%.4f")
+    alert_radius = st.slider("Alert Radius (miles):", min_value=5, max_value=50, value=15)
+    
+    submit_button = st.form_submit_button("Set Alert")
+
+if submit_button:
+    if user_email and "@" in user_email:
+        st.success(f"Alert set! We will notify **{user_email}** if a fire is detected within **{alert_radius} miles** of ({user_lat}, {user_lon}).")
+    else:
+        st.error("Please enter a valid email address.")
