@@ -22,10 +22,47 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
+# --- AIR QUALITY FETCHING FUNCTION ---
+def fetch_air_quality(lat, lon):
+    url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&current=us_aqi"
+    try:
+        res = requests.get(url, timeout=5).json()
+        current = res.get("current", {})
+        return current.get("us_aqi", "N/A")
+    except Exception:
+        return "N/A"
+
+# --- LIVE WEATHER & ALGORITHMIC RISK TELEMETRY ---
+def fetch_weather_risk(lat, lon):
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
+    try:
+        res = requests.get(url, timeout=5).json()
+        current = res.get("current", {})
+        temp = current.get("temperature_2m", 20)
+        humidity = current.get("relative_humidity_2m", 50)
+        wind = current.get("wind_speed_10m", 10)
+        direction = current.get("wind_direction_10m", 0)
+        
+        # Algorithmic Weighted Risk Computation
+        raw_score = (wind / 10.0) * ((100.0 - humidity) / 20.0) * (temp / 20.0)
+        
+        if raw_score >= 8.0:
+            risk = "CRITICAL 🚨"
+        elif raw_score >= 4.0:
+            risk = "HIGH ⚠️"
+        elif raw_score >= 2.0:
+            risk = "MODERATE 🟡"
+        else:
+            risk = "LOW 🟢"
+            
+        return temp, humidity, wind, direction, risk, round(raw_score, 2)
+    except Exception:
+        return "N/A", "N/A", "N/A", "N/A", "Unknown", 0.0
+
 # --- TITLE & HEADER ---
 st.title("🛰️ NASA EONET Global Wildfire Intelligence Hub")
 st.markdown("""
-*Integrating **NASA Earth Observatory Telemetry**, **Open-Meteo Microclimate Data**, and **Proximity Analysis** to evaluate wildfire threats globally.*
+*Integrating **NASA Earth Observatory Telemetry**, **Open-Meteo Microclimate & Air Quality Data**, and **Proximity Analysis** to evaluate wildfire threats globally.*
 """)
 
 # --- SIDEBAR CONTROLS ---
@@ -71,33 +108,6 @@ def fetch_nasa_events(days):
     except Exception as e:
         st.error(f"Error fetching data from NASA EONET API: {e}")
         return pd.DataFrame()
-
-# --- LIVE WEATHER & ALGORITHMIC RISK TELEMETRY ---
-def fetch_weather_risk(lat, lon):
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
-    try:
-        res = requests.get(url, timeout=5).json()
-        current = res.get("current", {})
-        temp = current.get("temperature_2m", 20)
-        humidity = current.get("relative_humidity_2m", 50)
-        wind = current.get("wind_speed_10m", 10)
-        direction = current.get("wind_direction_10m", 0)
-        
-        # Algorithmic Weighted Risk Computation
-        raw_score = (wind / 10.0) * ((100.0 - humidity) / 20.0) * (temp / 20.0)
-        
-        if raw_score >= 8.0:
-            risk = "CRITICAL 🚨"
-        elif raw_score >= 4.0:
-            risk = "HIGH ⚠️"
-        elif raw_score >= 2.0:
-            risk = "MODERATE 🟡"
-        else:
-            risk = "LOW 🟢"
-            
-        return temp, humidity, wind, direction, risk, round(raw_score, 2)
-    except Exception as e:
-        return "N/A", "N/A", "N/A", "N/A", "Unknown", 0.0
 
 # Fetch Main Data
 with st.spinner("Fetching NASA Satellite Feeds..."):
@@ -150,7 +160,7 @@ if not df.empty:
     fig_map.update_layout(height=600, margin={"r":0,"t":40,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-    # Risk Assessment Module
+    # Risk Assessment & Air Quality Module
     st.markdown("---")
     st.subheader("🔬 Atmospheric Threat & Risk Score Engine")
     st.write("Select an active event to stream microclimate conditions and run algorithmic risk modeling:")
@@ -160,15 +170,17 @@ if not df.empty:
     if selected_event:
         event_data = filtered_df[filtered_df["Event Name"] == selected_event].iloc[0]
         
-        # Fetch live weather for selected event
+        # Fetch live weather and AQI for selected event
         temp, humidity, wind, direction, risk, raw_score = fetch_weather_risk(event_data["Latitude"], event_data["Longitude"])
+        aqi_val = fetch_air_quality(event_data["Latitude"], event_data["Longitude"])
         
-        r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns(5)
-        r_col1.metric("Local Temperature", f"{temp} °C")
-        r_col2.metric("Relative Humidity", f"{humidity} %")
-        r_col3.metric("Wind Speed (10m)", f"{wind} km/h")
+        r_col1, r_col2, r_col3, r_col4, r_col5, r_col6 = st.columns(6)
+        r_col1.metric("Local Temp", f"{temp} °C")
+        r_col2.metric("Humidity", f"{humidity} %")
+        r_col3.metric("Wind Speed", f"{wind} km/h")
         r_col4.metric("Wind Bearing", f"{direction}°")
-        r_col5.metric("Algorithmic Risk Index", f"{raw_score} ({risk})")
+        r_col5.metric("Air Quality (US AQI)", f"{aqi_val}")
+        r_col6.metric("Risk Index", f"{raw_score} ({risk})")
 
     # Time-Series Analytics Chart
     st.markdown("---")
@@ -209,20 +221,30 @@ if not df.empty:
 
 else:
     st.warning("No active wildfire events returned. Adjust the sidebar settings!")
-    st.markdown("---")
+
+# --- WILDFIRE ALERTS SECTION ---
+st.markdown("---")
 st.header("🚨 Wildfire Distance & Risk Alerts")
 st.write("Subscribe to get notified if an active fire hotspot is detected near your location.")
 
 with st.form("alert_form"):
     user_email = st.text_input("Enter your email address:")
-    user_lat = st.number_input("Your Latitude:", value=37.7749, format="%.4f")
-    user_lon = st.number_input("Your Longitude:", value=-122.4194, format="%.4f")
+    alert_lat = st.number_input("Your Latitude:", value=37.7749, format="%.4f")
+    alert_lon = st.number_input("Your Longitude:", value=-122.4194, format="%.4f")
     alert_radius = st.slider("Alert Radius (miles):", min_value=5, max_value=50, value=15)
     
     submit_button = st.form_submit_button("Set Alert")
 
 if submit_button:
     if user_email and "@" in user_email:
-        st.success(f"Alert set! We will notify **{user_email}** if a fire is detected within **{alert_radius} miles** of ({user_lat}, {user_lon}).")
+        st.success(f"Alert set! We will notify **{user_email}** if a fire is detected within **{alert_radius} miles** of ({alert_lat}, {alert_lon}).")
     else:
         st.error("Please enter a valid email address.")
+
+# --- EMBEDDABLE WIDGET SECTION ---
+st.markdown("---")
+st.header("🌐 Embed This Map on Your Website")
+st.write("Want to display live wildfire tracking on your own blog or organization's page? Copy and paste the snippet below:")
+
+embed_code = '<iframe src="https://nasa-wildfire-tracker-3pfkr5zcs2jmze5dpknvet.streamlit.app/?embed=true" width="100%" height="600" frameborder="0"></iframe>'
+st.code(embed_code, language="html")
